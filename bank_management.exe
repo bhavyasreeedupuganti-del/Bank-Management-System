@@ -1,0 +1,317 @@
+#include <iostream>
+#include <fstream>
+#include <iomanip>
+#include <string>
+#include <sstream>
+#include <limits>
+using namespace std;
+
+class BankAccount {
+private:
+    int accountNumber;
+    string name;
+    long long balancePaise;
+
+public:
+    BankAccount() : accountNumber(0), balancePaise(0) {}
+
+    BankAccount(int accNo, string customerName, long long balance)
+        : accountNumber(accNo),
+          name(customerName),
+          balancePaise(balance) {}
+
+    int getAccountNumber() const {
+        return accountNumber;
+    }
+
+    string getName() const {
+        return name;
+    }
+
+    long long getBalance() const {
+        return balancePaise;
+    }
+
+    void deposit(long long amount) {
+        if (amount <= 0) {
+            cout << "Amount must be positive.\n";
+            return;
+        }
+
+        balancePaise += amount;
+        cout << "Deposit successful.\n";
+    }
+
+    void withdraw(long long amount) {
+        if (amount <= 0) {
+            cout << "Amount must be positive.\n";
+        } else if (amount > balancePaise) {
+            cout << "Insufficient balance.\n";
+        } else {
+            balancePaise -= amount;
+            cout << "Withdrawal successful.\n";
+        }
+    }
+
+    void display() const {
+        cout << "\nAccount Number: " << accountNumber
+             << "\nCustomer Name: " << name
+             << "\nBalance: Rs. "
+             << balancePaise / 100 << "."
+             << setw(2) << setfill('0')
+             << balancePaise % 100
+             << setfill(' ') << "\n";
+    }
+};
+
+class Bank {
+private:
+    const string filename = "accounts.txt";
+
+    bool accountExists(int accNo) {
+        ifstream file(filename);
+        int number;
+        string customer;
+        long long balance;
+
+        while (file >> number >> quoted(customer) >> balance) {
+            if (number == accNo)
+                return true;
+        }
+        return false;
+    }
+
+    bool saveAccount(const BankAccount& account) {
+        ofstream file(filename, ios::app);
+        if (!file)
+            return false;
+
+        file << account.getAccountNumber() << " "
+             << quoted(account.getName()) << " "
+             << account.getBalance() << "\n";
+
+        return static_cast<bool>(file);
+    }
+
+    bool updateAccount(const BankAccount& updated) {
+        ifstream file(filename);
+        ofstream temp("accounts.tmp");
+
+        if (!file || !temp)
+            return false;
+
+        int number;
+        string customer;
+        long long balance;
+        bool found = false;
+
+        while (file >> number >> quoted(customer) >> balance) {
+            if (number == updated.getAccountNumber()) {
+                customer = updated.getName();
+                balance = updated.getBalance();
+                found = true;
+            }
+
+            temp << number << " "
+                 << quoted(customer) << " "
+                 << balance << "\n";
+        }
+
+        file.close();
+        temp.close();
+
+        if (!found)
+            return false;
+
+        if (std::rename("accounts.tmp", filename.c_str()) != 0)
+            return false;
+
+        return true;
+    }
+
+    bool readMoney(long long& amount) {
+        string input;
+        getline(cin, input);
+
+        stringstream ss(input);
+        double rupees;
+        char extra;
+
+        if (!(ss >> rupees) || (ss >> extra) ||
+            rupees <= 0 || rupees > 100000000000.0) {
+            return false;
+        }
+
+        double paise = rupees * 100;
+        if (paise != static_cast<long long>(paise))
+            return false;
+
+        amount = static_cast<long long>(paise);
+        return true;
+    }
+
+    bool readAccount(BankAccount& account, int accNo) {
+        ifstream file(filename);
+        int number;
+        string customer;
+        long long balance;
+
+        while (file >> number >> quoted(customer) >> balance) {
+            if (number == accNo) {
+                account = BankAccount(number, customer, balance);
+                return true;
+            }
+        }
+        return false;
+    }
+
+public:
+    void createAccount() {
+        int accNo;
+        string customer;
+        long long amount;
+
+        cout << "Enter account number: ";
+        if (!(cin >> accNo) || accNo <= 0) {
+            cout << "Invalid account number.\n";
+            cin.clear();
+            cin.ignore(numeric_limits<streamsize>::max(), '\n');
+            return;
+        }
+
+        cin.ignore(numeric_limits<streamsize>::max(), '\n');
+
+        if (accountExists(accNo)) {
+            cout << "Account already exists.\n";
+            return;
+        }
+
+        cout << "Enter customer name: ";
+        getline(cin, customer);
+
+        if (customer.empty() || customer.find('"') != string::npos) {
+            cout << "Invalid customer name.\n";
+            return;
+        }
+
+        cout << "Enter initial deposit in rupees: ";
+        if (!readMoney(amount)) {
+            cout << "Invalid deposit amount.\n";
+            return;
+        }
+
+        BankAccount account(accNo, customer, amount);
+
+        if (saveAccount(account))
+            cout << "Account created successfully.\n";
+        else
+            cout << "Could not save account.\n";
+    }
+
+    void depositMoney() {
+        changeBalance(true);
+    }
+
+    void withdrawMoney() {
+        changeBalance(false);
+    }
+
+    void changeBalance(bool isDeposit) {
+        int accNo;
+        long long amount;
+        BankAccount account;
+
+        cout << "Enter account number: ";
+        if (!(cin >> accNo)) {
+            cout << "Invalid account number.\n";
+            cin.clear();
+            cin.ignore(numeric_limits<streamsize>::max(), '\n');
+            return;
+        }
+        cin.ignore(numeric_limits<streamsize>::max(), '\n');
+
+        if (!readAccount(account, accNo)) {
+            cout << "Account not found.\n";
+            return;
+        }
+
+        cout << "Enter amount in rupees: ";
+        if (!readMoney(amount)) {
+            cout << "Invalid amount.\n";
+            return;
+        }
+
+        long long oldBalance = account.getBalance();
+
+        if (isDeposit) {
+            if (amount > numeric_limits<long long>::max() - oldBalance) {
+                cout << "Amount exceeds the allowed limit.\n";
+                return;
+            }
+            account.deposit(amount);
+        } else {
+            account.withdraw(amount);
+        }
+
+        if (account.getBalance() != oldBalance) {
+            if (updateAccount(account))
+                cout << "Account balance saved.\n";
+            else
+                cout << "Warning: could not save updated balance.\n";
+        }
+    }
+
+    void checkBalance() {
+        int accNo;
+        BankAccount account;
+
+        cout << "Enter account number: ";
+        if (!(cin >> accNo)) {
+            cout << "Invalid account number.\n";
+            cin.clear();
+            cin.ignore(numeric_limits<streamsize>::max(), '\n');
+            return;
+        }
+        cin.ignore(numeric_limits<streamsize>::max(), '\n');
+
+        if (readAccount(account, accNo))
+            account.display();
+        else
+            cout << "Account not found.\n";
+    }
+};
+
+int main() {
+    Bank bank;
+    int choice;
+
+    do {
+        cout << "\n===== BANK MANAGEMENT SYSTEM =====\n";
+        cout << "1. Create Account\n";
+        cout << "2. Deposit Money\n";
+        cout << "3. Withdraw Money\n";
+        cout << "4. Check Balance\n";
+        cout << "5. Exit\n";
+        cout << "Enter your choice: ";
+
+        if (!(cin >> choice)) {
+            cout << "Invalid input. Please enter a number.\n";
+            cin.clear();
+            cin.ignore(numeric_limits<streamsize>::max(), '\n');
+            continue;
+        }
+
+        cin.ignore(numeric_limits<streamsize>::max(), '\n');
+
+        switch (choice) {
+            case 1: bank.createAccount(); break;
+            case 2: bank.depositMoney(); break;
+            case 3: bank.withdrawMoney(); break;
+            case 4: bank.checkBalance(); break;
+            case 5: cout << "Thank you for using our bank system.\n"; break;
+            default: cout << "Invalid choice. Try again.\n";
+        }
+    } while (choice != 5);
+
+    return 0;
+}
